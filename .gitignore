@@ -4,3 +4,20 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# Prisma 生成的 client
+packages/server/src/generated/
+
+# 构建缓存
+*.tsbuildinfo
+
+# 日志
+*.log
+npm-debug.log*
+
+# 操作系统 / 编辑器
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json

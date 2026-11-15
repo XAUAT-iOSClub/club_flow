@@ -1,7 +1,7 @@
-# Agent.md · ClubFlow 通用工作流引擎
+# AGENTS.md · ClubFlow 通用工作流引擎
 
 > 所有 AI 编码代理（Claude Code、Codex、Cursor 等）在本仓库工作时的统一入口。
-> `CLAUDE.md` 通过 `@Agent.md` 引用本文件，因此规则只维护这一份。
+> `CLAUDE.md` 通过 `@AGENTS.md` 引用本文件，因此规则只维护这一份。
 >
 > 最后更新：2026-11-15
 
@@ -59,28 +59,28 @@ PRD 的 v0.13 只改写了部分章节，**当前文档是混合状态**：
 仓库处于**骨架阶段**，尚无业务代码：
 
 ```
-package.json            npm workspaces（server / schema），全部脚本仍是占位
+package.json            npm workspaces（server / schema）
 tsconfig.json           ES2022 + NodeNext + strict + noUncheckedIndexedAccess
 .nvmrc                  Node 22
-packages/schema/        @clubflow/schema：zod DSL 契约（src 为空）
+packages/schema/        @clubflow/schema：zod DSL 契约（入口占位，编译器未接入）
 packages/server/        @clubflow/server：引擎本体
-  src/infra/            配置、数据库、日志、加密等基础设施（空）
+  src/infra/            db.ts（连接池/时区）、json.ts（BigInt 序列化）、partitions.ts（分区维护）、cron.ts（分区定时任务）
   src/modules/auth/     官网 JWT / JWKS 验签与角色映射（空）
   src/modules/compiler/ 解析、三档校验、归一化、冻结版本（空）
-  src/modules/runtime/  抢占、DAG 执行、节点执行、SSE（空）
+  src/modules/runtime/  run-events.ts（事件 seq 分配）；抢占、DAG、SSE 未开始
   src/modules/waits/    通用异步等待与恢复（审批是其中一个场景）（空）
   src/modules/connectors/ manifest、出站白名单、鉴权、入站 trigger（空）
   src/modules/workflows/ 工作流、草稿、版本、发布与回滚（空）
-  src/modules/audit/    审计日志（空）
-  prisma/               Prisma schema 与 SQL 迁移（空）
-  tests/                集成测试（空）
+  src/modules/audit/    审计日志（audit-log.ts 已落地，其余待补）
+  prisma/               11 张表的 schema.prisma + 6 个 SQL 迁移（分区表为手写 DDL）
+  tests/                infra 集成测试（19 个用例，跑在 clubflow_test）
 docs/PRD-通用工作流引擎.md
 changes/                变更计划（本文件新增）
 ```
 
 已知待对齐项：
 
-- 根 `devDependencies` 的 `prisma` 是 `^8.0.0-rc.33`，`packages/server` 的 `@prisma/client` 是 `^7.10.1`，主版本不一致。首次生成 Client 前先统一版本。
+- 根 `devDependencies` 的 `prisma` 与 `packages/server` 的 `@prisma/client` 已统一到 `^7.10.1`。Prisma 7 需要 driver adapter（`@prisma/adapter-pg`）才能实例化 Client。
 - 根 `package.json` 是 `"type": "commonjs"`，两个 workspace 是 `"type": "module"`；这是合法的分层，但新增根级脚本时注意 ESM/CJS 差异。
 - PRD 提到 `pnpm audit`，但仓库实际使用 **npm workspaces + package-lock.json**。以仓库现状为准，不要引入 pnpm。
 
@@ -123,7 +123,7 @@ changes/                变更计划（本文件新增）
 8. **单线程三条硬约束**：请求路径禁止同步 CPU 重活；表达式求值必须有步数（默认 10 万）与深度（默认 32）上限；进程异常记录后优雅退出。
 9. **引擎是 resource server**：只验官网 JWT，不签发；标准 `RS256` + JWKS（B1/B2），校验 `iss` / `aud` / `exp` / `nbf` / `usage=access`，拒绝 `none` 与 `HS*`；**不建用户表**，展示姓名用签名时快照。
 10. **权限在服务端强制**：rank ≥ 30 为 `admin` 可读写；rank = 20（Department）为 `member` 只读，唯一写操作是提交被指派的审批决定；rank < 20 一律 403。前端隐藏菜单不算授权。
-11. **数据层纪律**：独立 PostgreSQL 实例（库名 `clubflow`）；同一状态迁移的 run / node_run / run_events 放一个事务；HTTP 调用一律在事务外；`run_events` / `audit_logs` 按 `ts` 月分区，用 SQL 迁移建表。
+11. **数据层纪律**：独立 PostgreSQL 实例（库名 `clubflow`）；同一状态迁移的 run / node_run / run_events 放一个事务；HTTP 调用一律在事务外；`run_events` / `audit_logs` 按 `ts` 月分区，用 SQL 迁移建表。连接会话时区固定为 UTC（Prisma 7 的 query compiler 把 Date 序列化成不带偏移的 UTC 墙上时间，会话时区非 UTC 会让 `timestamptz` 整体偏移），分区边界一律写显式 `+08`。
 12. **异步等待的取消与恢复**：先持久化取消状态，再幂等请求外部取消；迟到结果不得恢复已取消运行；回调验签、时间窗、去重、条件更新缺一不可。
 
 ---
@@ -163,18 +163,20 @@ changes/                变更计划（本文件新增）
 
 ## 8. 常用命令
 
-当前 `package.json` 的脚本是占位，使用 npx 直接调用：
-
 ```bash
-npm install                 # 安装 workspace 依赖
-npx tsc --noEmit            # 类型检查
-npx vitest run              # 测试
-npx vitest                  # watch 模式
+npm install                 # 安装 workspace 依赖（server 的 postinstall 会自动 prisma generate）
+npm run typecheck           # 类型检查（含 prisma.config.ts / vitest.config.ts）
+npm run build               # 构建两个 workspace
+npm test                    # 按 workspace 聚合跑测试
+npm test -w @clubflow/server # 只跑引擎测试（vitest）
 npx tsx <file.ts>           # 直接运行 TS
-npx prisma generate         # 生成 Prisma Client
-npx prisma migrate dev      # 开发迁移（需独立 PG 实例）
-npx tsup                    # 构建
+npm run -w @clubflow/server prisma:generate   # 生成 Prisma Client
+npm run -w @clubflow/server prisma:migrate    # 应用迁移（migrate deploy，禁止 migrate dev）
 ```
+
+不要在仓库根目录直接跑 `npx vitest run`：它会连同 `.agents/skills/**` 一起扫描，报 “No test suite found”。用 `npm test` 或进 `packages/server` 再跑。
+
+Prisma 7 的两点差异：连接串写在 `packages/server/prisma.config.ts`（schema 里不再支持 `url`）；Prisma 命令必须在 `packages/server` 目录下执行，否则读不到该配置文件。
 
 新增脚本时写入对应 workspace 的 `package.json`，不要在根目录复制一份。
 

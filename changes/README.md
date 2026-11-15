@@ -112,7 +112,7 @@ git mv changes/2026-11-15-example-change changes/archive/
 
 - `spec.md` 必须引用 PRD 章节与验收项；范围以 PRD §2.3 非目标为边界。
 - 计划执行中发现 PRD 需要修改时：**先改 PRD（需用户确认），再改计划**，不要把偏离悄悄写进代码。
-- PRD 的审批章节存在新旧方案并存，以 §4.1.1 为准，详见 [Agent.md](../Agent.md) 第 2.1 节。
+- PRD 的审批章节存在新旧方案并存，以 §4.1.1 为准，详见 [AGENTS.md](../AGENTS.md) 第 2.1 节。
 
 ## 7. 快速清单
 

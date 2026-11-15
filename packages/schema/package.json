@@ -2,9 +2,17 @@
   "name": "@clubflow/schema",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "dist/index.js",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsup src/index.ts --format esm --dts",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
   },
   "keywords": [],
   "author": "",
