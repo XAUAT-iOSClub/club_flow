@@ -22,13 +22,15 @@
 | TC-013 | 集成 | 已迁移 | 查 `node_waits.status` 的 `udt_name`、`node_waits_run_id_fkey` 的 `confdeltype`、关键索引是否存在 | 状态为 `node_wait_status` 枚举；外键为 `c`（级联）；5 个索引齐全，失效的 `run_events_run_id_seq_ts_key` 不存在 | spec §6 约束完整 | `tests/infra/schema.test.ts` | 通过 |
 | TC-014 | 集成 | 已迁移；存在一个超期分区 | ① 造 `run_events_202501` 后调用 `prunePartitions(now)`；② 同上但分区在保留期内；③ 调用 `startPartitionMaintenance()` 后立即停止 | ① 分区被 DROP 且写入 `audit_logs`（`actor_id='system'`、`action='partition.drop'`、`after={table,retentionDays}`）；② 分区保留、无审计；③ 注册与停止均不抛错 | spec §6 清理 | `tests/infra/cron.test.ts` | 通过 |
 | TC-015 | 集成 | 已迁移 | 在 `shadow` schema 建同名表 `run_events_209901`，再调用 `ensureMonthPartition('run_events', 2099-01)` | `public` 下仍建出分区；`ensure_month_partition` 不因其他 schema 的同名表跳过预建 | spec §6 预建 | `tests/infra/partitions.test.ts` | 通过 |
+| TC-016 | 单测 | 无 | 从 `src/index.ts` 导入整个模块，检查导出面与枚举值 | `withTransaction` / 分区维护 / `writeAuditLog` / `appendRunEvent` / `stringifyJson` 等 14 个函数存在；`RETENTION_DAYS` 与 4 个枚举值符合预期 | 模块接入面 | `tests/infra/index.test.ts` | 通过 |
 
 ## 手工 / E2E 用例
 
 | ID | 场景 | 前置条件 | 步骤 | 期望结果 | 对应验收项 | 状态 |
 |---|---|---|---|---|---|---|
-| MT-001 | 确认分区物理形态 | 已迁移 | `psql` 查 `pg_class` / `pg_inherits` | 父表 `relkind='p'`，子分区挂载正确，边界符合 `+08` | spec §6 分区形态 | 未开始 |
+| MT-001 | 确认分区物理形态 | 已迁移 | `psql` 查 `pg_class` / `pg_inherits` | 父表 `relkind='p'`，子分区挂载正确，边界符合 `+08` | spec §6 分区形态 | 通过 |
 | MT-002 | 定时任务执行 | 服务已启动（Fastify 入口接线后） | 观察 03:00 / 03:10 任务日志 | 预建与清理各有成功日志；清理写入 `audit_logs(actor_id='system')`。任务逻辑已由 TC-014 覆盖，本条只验证进程内实际触发 | spec §6 清理 | 未开始 |
+| MT-003 | 裸 SQL 约束验收 | 已迁移 | 按「结构 → 约束 → 级联 → 状态 → 事务」顺序执行手工 SQL（记录见 `test/results.md`） | NOT NULL / 唯一 / 外键 / 枚举全部拦截；级联与 RESTRICT 符合设计；1 MB YAML 不截断；事务回滚无残留 | spec §6 数据完整性 | 通过（接口联调部分待接口层） |
 
 ## 安全与异常用例
 

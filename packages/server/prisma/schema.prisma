@@ -95,7 +95,7 @@ model Workflow {
   publishedVersion Int?      @map("published_version")
   archivedAt       DateTime? @map("archived_at") @db.Timestamptz(3)
   createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt        DateTime  @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedAt        DateTime  @updatedAt @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   versions WorkflowVersion[]
   runs     Run[]
@@ -179,6 +179,7 @@ model NodeRun {
   output     Json?         @db.JsonB
   outputRef  String?       @map("output_ref") // 正文 > 256KB 时进对象存储
   error      Json?         @db.JsonB
+  skipReason Json?         @map("skip_reason") @db.JsonB // 条件分支未命中时记录：条件、评估值、出口
   startedAt  DateTime?     @map("started_at") @db.Timestamptz(3)
   finishedAt DateTime?     @map("finished_at") @db.Timestamptz(3)
   waitedMs   Int?          @map("waited_ms")
@@ -195,7 +196,7 @@ model RunEvent {
   id      BigInt        @default(autoincrement())
   runId   String        @map("run_id")
   seq     Int
-  ts      DateTime      @db.Timestamptz(3)
+  ts      DateTime      @default(now()) @db.Timestamptz(3)
   level   RunEventLevel
   nodeId  String?       @map("node_id")
   type    String
@@ -222,7 +223,7 @@ model Secret {
   keyVersion Int      @map("key_version")
   createdBy  String?  @map("created_by")
   createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedAt  DateTime @updatedAt @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   @@map("secrets")
 }
@@ -235,7 +236,7 @@ model Trigger {
   enabled    Boolean     @default(true)
   nextRunAt  DateTime?   @map("next_run_at") @db.Timestamptz(3)
   createdAt  DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt  DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
+  updatedAt  DateTime    @updatedAt @default(now()) @map("updated_at") @db.Timestamptz(3)
 
   workflow Workflow @relation(fields: [workflowId], references: [id], onDelete: Cascade)
 

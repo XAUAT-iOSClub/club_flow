@@ -164,6 +164,111 @@ review 剩余项里的两条，本轮修掉：
 | `npm run build` | 通过（server ESM 72.53 KB / schema DTS 13 B） |
 | `npm test -w @clubflow/server` | 5 个文件、19 个用例全绿（15.37s） |
 
+## 2026-11-15 · 模块接入面自检
+
+按「鉴权 / 连接器模板 / 工作流解析 / 任务状态机 / 前端 / 审核连接器」逐个核对数据库层能否直接接入，并补一条导出面守卫用例 TC-016（`tests/infra/index.test.ts`）：从 `src/index.ts` 全量导入，断言 14 个函数、`RETENTION_DAYS` 与 4 个枚举值存在且正确。
+
+物理结构复核（`clubflow_test`）：11 张业务表全部在位，`run_events` / `audit_logs` 为分区父表（`relkind = 'p'`），各带 202611 / 202612 / 202701 三个子分区。
+
+复跑结果（根目录，Node v22.23.5）：
+
+| 命令 | 结果 |
+|---|---|
+| `npm test -w @clubflow/server` | 6 个文件、20 个用例全绿（7.48s） |
+| `npm run typecheck` | 通过 |
+
+## 2026-11-15 · 手工 SQL 验收（DBeaver / psql 等价路径）
+
+按「先验结构 → 裸 SQL 测约束 → 查落库结果」的顺序在 `clubflow_test` 上跑了一遍手工脚本（全部在 DO 块内造数并清理，残留检查为 0）。
+
+| 检查 | 结果 |
+|---|---|
+| 表结构 | 11 张业务表 + 6 个子分区；`yaml` 为 `text`、`dsl`/`draft`/`manifest` 为 `jsonb`、`ts`/`created_at` 为 `timestamptz` |
+| 主键 / 唯一 | 12 张业务表主键齐全；`workflows.slug`、`workflow_versions(workflow_id, version)`、`node_runs(run_id, node_id, attempt)`、`node_waits(correlation_id)` 等唯一约束在位 |
+| 外键 / 级联 | `workflow_versions` / `triggers` 随工作流 CASCADE；`node_runs` / `run_events` / `node_waits` 随 run CASCADE；`runs` 对 workflow / version 为 RESTRICT |
+| NOT NULL | `connectors` 缺 `manifest` → `23502` 拦截 |
+| 唯一冲突 | 重复 `workflows.slug` → `23505` 拦截 |
+| 外键 | run 指向不存在的工作流 → `23503` 拦截 |
+| 枚举 | `runs.status = 'bogus'` → `22P02` 拦截 |
+| 状态流转 | `queued → running → succeeded` 正常落库；`succeeded → queued` 数据库不拦（按设计由运行时守卫，见遗留项） |
+| 级联删除 | 删除 run 后 `node_runs` / `node_waits` / `run_events` 均归零 |
+| 删除保护 | 仍有 run 的工作流删除被 `23503` 拦截 |
+| 长文本 | 1 MB YAML `octet_length = 1000000`，未被截断 |
+| 默认值 | `created_at` / `updated_at` 均自动填充 |
+| 分区路由 | 11 月事件落 `run_events_202611`，12 月落 `run_events_202612` |
+| 事务回滚 | `BEGIN` 内插入后 `ROLLBACK`，无残留 |
+| 幂等键 | 同 `(scope, key)` 第二次写入 → `23505` 拦截 |
+
+本轮修掉的问题：`workflows` / `secrets` / `triggers` 的 `updated_at` 只有 Prisma 客户端填充，裸 SQL 插入触发 NOT NULL。新增迁移 `20261115131000_updated_at_defaults` 补数据库默认值，`schema.prisma` 同步加 `@default(now())`。7 个迁移已应用到两个库。
+
+未执行的部分：接口联调（第 3～5 步）。Fastify 入口与 REST 层尚未落地，`flowapi` 式「调接口后立刻查库」的验证等接口层完成后补做，等价约束已由 20 个自动化用例覆盖。
+
+复跑结果（Node v22.23.5）：`npm test -w @clubflow/server` 6 文件 20 用例全绿（8.06s）、`npm run typecheck` 通过、`npm run build` 通过。
+
+## 2026-11-15 · FlowApi 用例清单适配验收
+
+把外部给的 MySQL 版用例（`connector` / `workflow` / `workflow_task` / `user`）映射到本项目后在 `clubflow_test` 上执行了一遍，造数全部带 `manual2_` 前缀并在末尾清理，残留为 0。
+
+| 原用例 | 本项目对应 | 结果 |
+|---|---|---|
+| C001 正常插入连接器 | `connectors(id, version, kind, manifest jsonb)` | 通过 |
+| C002 必填为空 | 缺 `manifest` → `23502` | 通过 |
+| C003 重复名称 | 无 `name` 列，改测主键 `(id, version)` 重复 → `23505` | 通过 |
+| C004 YAML 超长 | `manifest` 200 KB jsonb，`octet_length = 200012` | 通过 |
+| C005 更新状态 | 无 `status` 列，改测 `kind` / `manifest` 更新，字段不互相覆盖 | 通过 |
+| C006 删除连接器 | 删除成功；DSL 内按 `{id}.{actionKey}` 引用，无外键阻塞（见风险） | 通过 |
+| W001 新建工作流 | `workflows(slug, owner_id, draft jsonb)` | 通过 |
+| W002 绑定不存在的连接器 | 无 `connector_id` 列，不适用 | 跳过 |
+| W003 YAML 为空 | `draft` 为 NULL → `23502` | 通过 |
+| W004 修改 YAML | 更新 `draft` 后 `slug` / `owner_id` 不变 | 通过 |
+| T001～T004 | `runs` 默认 `queued`；`queued→running→succeeded/failed`，时间戳与 `error` jsonb 正常落库 | 通过 |
+| T005 非法状态跳转 | `queued→succeeded` 数据库不拦，属设计（状态机守卫在运行时） | 预期行为 |
+| T006 重复生成任务 | 同一工作流多次建 run，生成多条独立记录 | 通过 |
+| T007 历史任务查询 | `ORDER BY created_at DESC` 正常 | 通过 |
+| U001～U003 | 按设计无用户表，鉴权按学号字符串 + 鉴权模块判断 | 不适用 |
+| TR001 事务中断 | `BEGIN` 插入后 `ROLLBACK`，无残留 | 通过 |
+| TR002 并发同名工作流 | 唯一键是 `slug` 而非 `name`，重复写入 `23505` | 通过 |
+
+**已知风险（非数据库层缺陷）**：已发布工作流的 DSL 里引用着某个连接器版本，但数据库无法用外键表达这层关系。删除或下线连接器版本时不会报错，需由连接器模块在删除前做引用检查（或改为软删除）。
+
+**修复进展（2026-11-15）**：已新增事务内删除前引用检查与行锁，覆盖所有冻结工作流版本；详见[连接器版本删除引用保护](../../2026-11-15-connector-delete-guard/)。原数据库层测试结论保持不变。
+
 ## 待办
 
 - MT-002 仍为手工项：任务逻辑已由 TC-014 覆盖，但「进程内 03:00 / 03:10 实际触发」要等 Fastify 启动入口接线后观察日志。
+
+## 2026-11-17 · 全码通读 + 加固改进
+
+- 环境：Node v24.19.0 + PostgreSQL 17 + npm 11.17.0
+- 覆盖：全部手写源码、schema.prisma、7 个 SQL 迁移、7 个测试文件、变更计划文档
+
+### 基线验证
+
+| 命令 | 结果 |
+|---|---|
+| `npm run typecheck` | 通过 |
+| `npm run build` | 通过（server ESM 75.64 KB / schema DTS 13 B） |
+| `npm test -w @clubflow/server` | **7 文件 26 用例全绿**（11.55s） |
+
+### 审查发现
+
+通读了 `src/infra/{db,partitions,cron,json}.ts`、`src/modules/{runtime,audit,connectors}/*`、schema.prisma、7 个迁移和全部测试后，**未发现直接导致数据错误的 bug**。主要问题集中在「纪律靠人守住」而非逻辑错误：
+
+1. `appendRunEvent` / `nextEventSeq` 签名接受 `Db`（= Prisma.TransactionClient），但 PrismaClient 与 TransactionClient 结构兼容，全局 `prisma` 也能传进去。注释和 AGENTS.md 都明确要求它们必须在事务内调用，但类型系统无法强制。
+2. `deleteConnectorVersion` 内部有 `FOR UPDATE` + `CROSS JOIN LATERAL jsonb_each` 全表扫冻结 DSL，默认 Prisma 事务超时 5s，未来冻结版本多了可能不够。
+3. `ensureMonthPartition` 假设调用方传的 `monthStart` 是 `monthStartOf` 返回的月初日期，但没有显式校验。如果有人从 API 层直接传了一个月中某天，拼出的 DDL 边界会错位。
+
+### 本次加固
+
+| 改动 | 位置 | 说明 |
+|---|---|---|
+| `withTransaction` 暴露 timeout / isolationLevel | `src/infra/db.ts` | 保持向后兼容，调用方可按需调大 timeout |
+| `deleteConnectorVersion` 显式传 15s timeout | `src/modules/connectors/delete-connector-version.ts` | 慢操作有足够时间完成，避免被默认 5s 杀掉 |
+| `ensureMonthPartition` 加月初断言 | `src/infra/partitions.ts` | 在运行时拦截非月初 Date 输入，边界错位问题提前暴露 |
+
+改完复跑：**typecheck 通过、build 通过、26 用例全绿**，无回归。
+
+### 仍为纪律项、暂不改的
+
+- `appendRunEvent` / `writeAuditLog` 参数类型无法在 TS 结构类型下严格区分 PrismaClient 和 TransactionClient（前者是后者的超集）。靠 AGENTS.md §5 第 11 条和函数注释守住。
+- `audit_logs` 180 天保留期的过期删除行为未单独测，靠代码路径和 `run_events` 90 天测试覆盖。

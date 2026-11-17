@@ -20,6 +20,7 @@ export async function nextEventSeq(db: Db, runId: string): Promise<number> {
 
 /**
  * 追加一条运行事件，seq 由 {@link nextEventSeq} 分配，调用方不要自己填。
+ * ts 默认 now()，调用方一般也不用显式传；如果需要补历史数据可以传。
  * 必须与触发它的状态迁移放在同一事务里（AGENTS.md §5 第 11 条）。
  */
 export async function appendRunEvent(
@@ -27,5 +28,7 @@ export async function appendRunEvent(
   data: Omit<Prisma.RunEventUncheckedCreateInput, 'seq'>,
 ): Promise<RunEvent> {
   const seq = await nextEventSeq(db, data.runId);
-  return db.runEvent.create({ data: { ...data, seq } });
+  return db.runEvent.create({
+    data: { ts: new Date(), ...data, seq },
+  });
 }

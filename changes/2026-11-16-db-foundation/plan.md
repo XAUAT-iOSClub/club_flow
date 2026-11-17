@@ -24,7 +24,8 @@
 - [x] 新增迁移 `run_event_seq`：`runs.event_seq` 分配器，删除失效的 `(run_id, seq, ts)` 唯一索引
 - [x] 新增迁移 `node_wait_status_fk`：`node_waits` 状态枚举、`run_id` 外键、`triggers(workflow_id)` 索引
 - [x] 新增迁移 `ensure_partition_schema`：加固 `ensure_month_partition`（分区名取自 relname、存在性检查限定 public）
-- [x] `prisma migrate deploy` 在 `clubflow` 与 `clubflow_test` 上各应用 6 个迁移
+- [x] 新增迁移 `updated_at_defaults`：`workflows` / `secrets` / `triggers` 的 `updated_at` 补数据库默认值
+- [x] `prisma migrate deploy` 在 `clubflow` 与 `clubflow_test` 上各应用 7 个迁移
 - [x] 结构校验：18 个关系、跨月路由、`ensure_month_partition` 幂等、唯一冲突均符合预期
 
 ## 阶段 3：应用层接入
@@ -45,6 +46,8 @@
 - [x] 集成：DROP 过期分区后其余月份查询不受影响（TC-009）；表结构校验（TC-004，`tests/infra/schema.test.ts`）
 - [x] 集成：清理任务写 system 审计、保留期内不清理、定时任务可注册并停止（TC-014，`tests/infra/cron.test.ts`）
 - [x] 集成：其他 schema 同名表不影响预建（TC-015，`tests/infra/partitions.test.ts`）
+- [x] 单测：对外导出面守卫，14 个函数 / 枚举 / 保留期常量齐全（TC-016，`tests/infra/index.test.ts`）
+- [x] 手工：裸 SQL 验收（结构 / 约束 / 级联 / 状态 / 长文本 / 事务 / 分区路由，MT-003）
 - [x] `npx tsc --noEmit` 通过；`npm test` 全绿
 
 ## 阶段 5：交付

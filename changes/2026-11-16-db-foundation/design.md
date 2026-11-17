@@ -327,6 +327,7 @@ END $$;
 | `packages/server/prisma/migrations/<ts>_run_event_seq/migration.sql` | `runs.event_seq` 分配器；删除无效的 `(run_id, seq, ts)` 唯一索引，改为 `(run_id, seq)` 普通索引 |
 | `packages/server/prisma/migrations/<ts>_node_wait_status_fk/migration.sql` | `node_waits` 状态枚举、`run_id` 外键与索引、`triggers(workflow_id)` 索引 |
 | `packages/server/prisma/migrations/<ts>_ensure_partition_schema/migration.sql` | 加固 `ensure_month_partition`：分区名取自 `relname`、存在性检查限定 `public` |
+| `packages/server/prisma/migrations/<ts>_updated_at_defaults/migration.sql` | 给 `workflows` / `secrets` / `triggers` 的 `updated_at` 补数据库默认值（Prisma 的 `@updatedAt` 只在客户端填充） |
 | `packages/server/src/infra/db.ts` | PrismaClient 单例（连接池 20、会话时区 UTC）、`Db` 事务客户端类型、`withTransaction()` 事务入口、`disconnectDb()` |
 | `packages/server/src/index.ts` | 数据库层公共接口：`prisma` / `withTransaction` / 分区维护 / 审计 / 事件追加，以及模型类型与枚举；上层模块不直接 import `src/generated/prisma` |
 | `packages/server/src/infra/json.ts` | BigInt 安全序列化：`stringifyJson` / `jsonReplacer`，所有 REST/SSE 出口必须走这里 |
@@ -341,7 +342,7 @@ END $$;
 
 ### 2.4 关键流程
 
-**迁移执行顺序**（实际落地为 6 个迁移，全部用 `prisma migrate deploy` 应用）
+**迁移执行顺序**（实际落地为 7 个迁移，全部用 `prisma migrate deploy` 应用）
 
 ```
 1. init：prisma migrate diff --from-empty 生成基线后手工改写两张分区表
@@ -350,6 +351,7 @@ END $$;
 4. run_event_seq：runs.event_seq 分配器 + run_events 索引调整
 5. node_wait_status_fk：node_waits 状态枚举、run_id 外键、triggers 外键索引
 6. ensure_partition_schema：加固 ensure_month_partition（分区名取自 relname、限定 public）
+7. updated_at_defaults：三张表的 updated_at 补数据库默认值
 ```
 
 禁止使用 `prisma migrate dev` / `reset`：分区父表与 schema.prisma 的普通模型声明不完全一致，会被判为 drift 并提示重库。

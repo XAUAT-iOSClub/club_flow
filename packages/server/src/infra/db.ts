@@ -35,9 +35,15 @@ export const prisma = createPrismaClient(connectionString);
  *
  * 同一次状态迁移涉及的 run / node_run / run_events 必须放在一个事务里
  * （AGENTS.md §5 第 11 条）；HTTP 调用一律留在事务外。
+ *
+ * 默认 Prisma 事务超时是 5 秒。如果事务里包含 FOR UPDATE / 全表 jsonb_each 等
+ * 慢操作，调用方应显式传入更大的 timeout。
  */
-export function withTransaction<T>(fn: (tx: Db) => Promise<T>): Promise<T> {
-  return prisma.$transaction(fn);
+export function withTransaction<T>(
+  fn: (tx: Db) => Promise<T>,
+  options?: { timeout?: number; isolationLevel?: Prisma.TransactionIsolationLevel },
+): Promise<T> {
+  return prisma.$transaction(fn, options);
 }
 
 export async function disconnectDb(): Promise<void> {

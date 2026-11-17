@@ -72,8 +72,8 @@ packages/server/        @clubflow/server：引擎本体
   src/modules/connectors/ manifest、出站白名单、鉴权、入站 trigger（空）
   src/modules/workflows/ 工作流、草稿、版本、发布与回滚（空）
   src/modules/audit/    审计日志（audit-log.ts 已落地，其余待补）
-  prisma/               11 张表的 schema.prisma + 6 个 SQL 迁移（分区表为手写 DDL）
-  tests/                infra 集成测试（19 个用例，跑在 clubflow_test）
+  prisma/               11 张表的 schema.prisma + 7 个 SQL 迁移（分区表为手写 DDL）
+  tests/                infra 集成测试（20 个用例，跑在 clubflow_test）
 docs/PRD-通用工作流引擎.md
 changes/                变更计划（本文件新增）
 ```

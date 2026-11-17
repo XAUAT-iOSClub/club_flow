@@ -49,12 +49,31 @@ export async function ensureMonthPartition(
   table: PartitionedTable,
   monthStart: Date,
 ): Promise<void> {
+  assertMonthStart(monthStart);
   // 用字面量而不是 Date 参数：DDL 的边界不能依赖驱动对 Date 的序列化行为
   const from = monthLiteral(monthStart);
   const to = monthLiteral(monthStartOf(monthStart, 1));
   await db.$executeRawUnsafe(
     `SELECT ensure_month_partition('${table}'::regclass, '${from}'::timestamptz, '${to}'::timestamptz)`,
   );
+}
+
+/** 断言 monthStart 必须是 +08 视角下当月 1 号 00:00，否则拼出的 DDL 边界会错位 */
+function assertMonthStart(monthStart: Date): void {
+  const shifted = new Date(monthStart.getTime() + TZ_OFFSET_MS);
+  const year = shifted.getUTCFullYear();
+  const month = shifted.getUTCMonth();
+  const day = shifted.getUTCDate();
+  const hour = shifted.getUTCHours();
+  const min = shifted.getUTCMinutes();
+  const sec = shifted.getUTCSeconds();
+  if (day !== 1 || hour !== 0 || min !== 0 || sec !== 0) {
+    throw new RangeError(
+      `ensureMonthPartition 的 monthStart 必须是 +08 视角下当月 1 号 00:00，` +
+        `当前是 ${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')} ` +
+        `${String(hour).padStart(2, '0')}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}+08`,
+    );
+  }
 }
 
 /** 把月份起点渲染成带显式 +08 偏移的 SQL 字面量 */
