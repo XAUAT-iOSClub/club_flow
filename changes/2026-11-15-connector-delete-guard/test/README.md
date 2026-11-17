@@ -9,7 +9,7 @@
 | 项目 | 内容 |
 |---|---|
 | Node | 22.23.5 |
-| 数据库 | PostgreSQL 17，独立测试库 `clubflow_test` |
+| 数据库 | PostgreSQL 17，独立测试库 `clubflowtest` |
 | 环境变量 | 根目录 `.env` 中的 `TEST_DATABASE_URL` |
 | 定向命令 | `npm test -w @clubflow/server -- tests/connectors/delete-connector-version.test.ts` |
 | 全量命令 | `npm test -w @clubflow/server`、`npm run typecheck`、`npm run build` |

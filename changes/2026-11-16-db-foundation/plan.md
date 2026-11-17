@@ -25,7 +25,7 @@
 - [x] 新增迁移 `node_wait_status_fk`：`node_waits` 状态枚举、`run_id` 外键、`triggers(workflow_id)` 索引
 - [x] 新增迁移 `ensure_partition_schema`：加固 `ensure_month_partition`（分区名取自 relname、存在性检查限定 public）
 - [x] 新增迁移 `updated_at_defaults`：`workflows` / `secrets` / `triggers` 的 `updated_at` 补数据库默认值
-- [x] `prisma migrate deploy` 在 `clubflow` 与 `clubflow_test` 上各应用 7 个迁移
+- [x] `prisma migrate deploy` 在 `clubflow` 与 `clubflowtest` 上各应用 9 个迁移
 - [x] 结构校验：18 个关系、跨月路由、`ensure_month_partition` 幂等、唯一冲突均符合预期
 
 ## 阶段 3：应用层接入
